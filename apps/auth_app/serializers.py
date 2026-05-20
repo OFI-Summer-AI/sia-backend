@@ -30,6 +30,11 @@ class TokenRefreshSerializer(serializers.Serializer):
     refresh_token = serializers.CharField()
 
 
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    new_password = serializers.CharField(min_length=8, write_only=True)
+
+
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
@@ -99,7 +104,7 @@ class AdminUserDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = [
-            "id", "supabase_uid", "email", "full_name", "phone", "avatar_url",
+            "id", "email", "full_name", "phone", "avatar_url",
             "role", "is_active", "email_confirmed",
             "tenant",
             "can_access_mark", "can_access_hr",

@@ -4,9 +4,8 @@ Management command: make_super_admin
 Usage:
     python manage.py make_super_admin admin@example.com
 
-Sets the UserProfile.role to 'super_admin' for the given email.
-The user must already exist in the database (have logged in at least once,
-or been pre-created during registration).
+Promueve un UserProfile existente al rol super_admin.
+El usuario ya debe estar registrado y con email confirmado.
 """
 
 from django.core.management.base import BaseCommand, CommandError
@@ -14,7 +13,7 @@ from apps.auth_app.models import UserProfile
 
 
 class Command(BaseCommand):
-    help = "Promote a user to super_admin role."
+    help = "Promote an existing user to super_admin role."
 
     def add_arguments(self, parser):
         parser.add_argument("email", type=str, help="Email of the user to promote")
@@ -27,7 +26,7 @@ class Command(BaseCommand):
         except UserProfile.DoesNotExist:
             raise CommandError(
                 f'No UserProfile found for "{email}". '
-                "Make sure the user has registered and verified their email."
+                "Use create_super_admin to create a new super admin user."
             )
 
         if profile.role == "super_admin":

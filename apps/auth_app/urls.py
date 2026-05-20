@@ -10,9 +10,11 @@ urlpatterns = [
     # Public auth endpoints                                                 #
     # ------------------------------------------------------------------ #
     path("register/", views.register, name="auth-register"),
+    path("verify-email/", views.verify_email, name="auth-verify-email"),
     path("login/", views.login, name="auth-login"),
     path("refresh/", views.refresh_token, name="auth-refresh"),
     path("password/reset/", views.request_password_reset, name="auth-password-reset"),
+    path("password/reset/confirm/", views.confirm_password_reset, name="auth-password-reset-confirm"),
 
     # ------------------------------------------------------------------ #
     # Authenticated user endpoints                                          #

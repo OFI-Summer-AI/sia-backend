@@ -1,26 +1,29 @@
 """
-DRF authentication class for Supabase JWT tokens.
+DRF authentication class using SimpleJWT tokens.
 
-Returns UserProfile as request.user (UserProfile.is_authenticated = True).
-Django's auth.User is never involved in API authentication.
+Returns UserProfile as request.user. Django's auth.User is never involved.
 """
 
 import logging
+from django.core.cache import cache
 from rest_framework import authentication, exceptions
+from rest_framework_simplejwt.tokens import AccessToken
+from rest_framework_simplejwt.exceptions import TokenError
 
-from .supabase_client import supabase_auth
 from .models import UserProfile
 
 logger = logging.getLogger(__name__)
 
+JWT_BLACKLIST_PREFIX = "jwt_blacklist:"
 
-class SupabaseJWTAuthentication(authentication.BaseAuthentication):
+
+class UserProfileJWTAuthentication(authentication.BaseAuthentication):
     """
-    Authenticates Bearer JWT tokens issued by Supabase.
+    Authenticates Bearer JWT tokens issued by this backend (SimpleJWT).
 
     On success sets:
-      request.user        = UserProfile instance
-      request.auth        = None  (token payload not needed downstream)
+      request.user = UserProfile instance
+      request.auth = validated AccessToken
     """
 
     def authenticate(self, request):
@@ -33,73 +36,33 @@ class SupabaseJWTAuthentication(authentication.BaseAuthentication):
         if not token:
             return None
 
-        # JWTs always have exactly two dots (header.payload.signature).
-        # Supabase/tenant API keys do not — skip them here.
+        # JWTs always have exactly two dots. API keys do not — skip them here.
         if token.count(".") != 2:
             return None
 
-        is_valid, result = supabase_auth.verify_jwt(token)
-        if not is_valid:
-            raise exceptions.AuthenticationFailed(result.get("error", "Invalid token"))
+        try:
+            validated_token = AccessToken(token)
+        except TokenError as exc:
+            raise exceptions.AuthenticationFailed(str(exc))
 
-        # 'sub' comes from a locally decoded JWT payload; 'id' from the Supabase API response.
-        supabase_uid = result.get("sub") or result.get("id")
-        email = result.get("email")
+        # Check Redis blacklist (populated on logout)
+        jti = validated_token.get("jti")
+        if jti and cache.get(f"{JWT_BLACKLIST_PREFIX}{jti}"):
+            raise exceptions.AuthenticationFailed("Token has been revoked.")
 
-        if not supabase_uid:
-            raise exceptions.AuthenticationFailed("Invalid token: missing user ID")
+        user_id = validated_token.get("user_id")
+        if not user_id:
+            raise exceptions.AuthenticationFailed("Invalid token: missing user_id")
 
         try:
-            profile = self._get_or_create_profile(supabase_uid, email, result)
-        except Exception as exc:
-            logger.error("Failed to get/create UserProfile: %s", exc)
-            raise exceptions.AuthenticationFailed("Authentication failed")
+            profile = UserProfile.objects.select_related("tenant").get(id=user_id)
+        except UserProfile.DoesNotExist:
+            raise exceptions.AuthenticationFailed("User not found.")
 
         if not profile.is_active:
-            raise exceptions.AuthenticationFailed("User account is deactivated")
+            raise exceptions.AuthenticationFailed("User account is deactivated.")
 
-        # Sync email_confirmed flag if Supabase has confirmed it
-        email_confirmed = bool(
-            result.get("email_confirmed_at") or result.get("email_confirmed")
-        )
-        if email_confirmed and not profile.email_confirmed:
-            profile.email_confirmed = True
-            profile.save(update_fields=["email_confirmed"])
-
-        profile.record_login()
-        return (profile, None)
-
-    def _get_or_create_profile(
-        self, supabase_uid: str, email: str, token_data: dict
-    ) -> UserProfile:
-        # 1. Look up by Supabase UID (normal path)
-        try:
-            return UserProfile.objects.select_related("tenant").get(
-                supabase_uid=supabase_uid
-            )
-        except UserProfile.DoesNotExist:
-            pass
-
-        # 2. Look up by email (covers profiles pre-created by admin before first login)
-        if email:
-            try:
-                profile = UserProfile.objects.select_related("tenant").get(email=email)
-                if not profile.supabase_uid:
-                    profile.supabase_uid = supabase_uid
-                    profile.save(update_fields=["supabase_uid"])
-                return profile
-            except UserProfile.DoesNotExist:
-                pass
-
-        # 3. Create new profile on first login
-        metadata = token_data.get("user_metadata") or {}
-        return UserProfile.objects.create(
-            supabase_uid=supabase_uid,
-            email=email or "",
-            full_name=metadata.get("full_name", ""),
-            avatar_url=metadata.get("avatar_url"),
-            email_confirmed=bool(token_data.get("email_confirmed_at")),
-        )
+        return (profile, validated_token)
 
     def authenticate_header(self, request):
         return "Bearer"

@@ -12,6 +12,7 @@ from .models import UserProfile
 from .serializers import (
     RegisterSerializer, LoginSerializer, TokenRefreshSerializer,
     UserProfileSerializer, ProfileUpdateSerializer,
+    PasswordResetConfirmSerializer,
 )
 from .services import AuthService
 
@@ -29,7 +30,7 @@ def register(request):
     Register a new user account.
 
     Body: { "email", "password", "full_name" (optional) }
-    Supabase will send a confirmation email; the user must verify before logging in.
+    Sends a verification email; the user must verify before logging in.
     """
     serializer = RegisterSerializer(data=request.data)
     if not serializer.is_valid():
@@ -55,6 +56,31 @@ def register(request):
         {"success": True, "message": result["message"]},
         status=status.HTTP_201_CREATED,
     )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def verify_email(request):
+    """
+    Verify email address using the token sent by email.
+
+    Query param: ?token=<token>
+    """
+    token = request.query_params.get("token", "").strip()
+    if not token:
+        return Response(
+            {"success": False, "error": "Token is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    success, result = AuthService.verify_email(token)
+    if not success:
+        return Response(
+            {"success": False, "error": result["error"]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    return Response({"success": True, "message": result["message"]})
 
 
 @api_view(["POST"])
@@ -123,10 +149,9 @@ def refresh_token(request):
 @permission_classes([IsAuthenticated])
 def logout(request):
     """
-    Invalidate the current Supabase session.
+    Blacklist the current access token so it cannot be reused.
     The client must also discard its local tokens.
     """
-    # Extract the raw token from the Authorization header
     auth_header = request.META.get("HTTP_AUTHORIZATION", "")
     access_token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else ""
 
@@ -202,7 +227,7 @@ def update_profile(request):
 @permission_classes([AllowAny])
 def request_password_reset(request):
     """
-    Trigger a Supabase password-reset email.
+    Send a password-reset email.
 
     Body: { "email" }
     Always returns 200 to prevent email enumeration.
@@ -215,3 +240,33 @@ def request_password_reset(request):
         "success": True,
         "message": "If an account with that email exists, a reset link has been sent.",
     })
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def confirm_password_reset(request):
+    """
+    Confirm a password reset using the token from the email.
+
+    Body: { "token", "new_password" }
+    """
+    serializer = PasswordResetConfirmSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {"success": False, "errors": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = serializer.validated_data
+    success, result = AuthService.confirm_password_reset(
+        token=data["token"],
+        new_password=data["new_password"],
+    )
+
+    if not success:
+        return Response(
+            {"success": False, "error": result["error"]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    return Response({"success": True, "message": result["message"]})
