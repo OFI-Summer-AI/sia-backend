@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 import os
@@ -15,11 +16,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
     # Third party
     'corsheaders',
     'rest_framework',
-    
+
     # Local apps
     'apps.waitlist',
     'apps.chatbot',
@@ -100,12 +101,23 @@ REST_FRAMEWORK = {
         'tenant': '60/minute',
     },
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'apps.auth_app.authentication.SupabaseJWTAuthentication',  # Try JWT first
-        'apps.tenants.authentication.TenantAPIKeyAuthentication',  # Then API key
+        'apps.auth_app.authentication.UserProfileJWTAuthentication',
+        'apps.tenants.authentication.TenantAPIKeyAuthentication',
     ],
 }
 
-# Cache configuration (for rate limiting)
+# JWT Configuration (SimpleJWT)
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': False,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_CLAIM': 'user_id',
+}
+
+# Cache configuration (Redis en prod, memoria local en dev)
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
@@ -113,11 +125,16 @@ CACHES = {
     }
 }
 
-# Supabase Configuration
-SUPABASE_URL = os.getenv('SUPABASE_URL', '')
-SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY', '')
-SUPABASE_SERVICE_KEY = os.getenv('SUPABASE_SERVICE_KEY', '')
-SUPABASE_JWT_SECRET = os.getenv('SUPABASE_JWT_SECRET', '')
+# Email configuration
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = os.getenv('EMAIL_HOST', '')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'SIA <noreply@siasolutions.com>')
+
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 
 # Agent Configuration
 AGENT_CONFIG = {
@@ -129,12 +146,7 @@ AGENT_CONFIG = {
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
-# OIDC / OAuth 2.0 Configuration
-# OIDC_SIGNING_KEY: HS256 secret used to sign id_tokens.
-# Must be the same value configured in each agent backend for local verification.
-# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+# OIDC / OAuth 2.0 Configuration (para agentes externos)
 OIDC_SIGNING_KEY = os.getenv('OIDC_SIGNING_KEY', '')
-# OIDC_ISSUER: the public URL of THIS backend (not the frontend).
-# Used as the `iss` claim in issued id_tokens.
 OIDC_ISSUER = os.getenv('OIDC_ISSUER', 'http://localhost:8000')
-OIDC_TOKEN_EXPIRY = 3600  # seconds (access_token and id_token lifetime)
+OIDC_TOKEN_EXPIRY = 3600
