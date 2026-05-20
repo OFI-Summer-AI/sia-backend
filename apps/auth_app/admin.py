@@ -13,11 +13,11 @@ class UserProfileAdmin(admin.ModelAdmin):
         "email_confirmed", "last_login", "created_at",
     ]
     list_filter = ["role", "is_active", "email_confirmed"]
-    search_fields = ["email", "full_name", "supabase_uid"]
-    readonly_fields = ["id", "supabase_uid", "created_at", "updated_at", "last_login"]
+    search_fields = ["email", "full_name"]
+    readonly_fields = ["id", "created_at", "updated_at", "last_login"]
 
     fieldsets = (
-        ("Identity", {"fields": ("id", "supabase_uid", "email", "full_name", "phone", "avatar_url")}),
+        ("Identity", {"fields": ("id", "email", "full_name", "phone", "avatar_url")}),
         ("Role & Tenant", {"fields": ("role", "tenant")}),
         ("Status", {"fields": ("is_active", "email_confirmed")}),
         ("Timestamps", {"fields": ("last_login", "created_at", "updated_at"), "classes": ("collapse",)}),
